@@ -1,0 +1,23 @@
+image: maven:3.3.9
+
+pipelines:
+  branches:
+    release/*:
+      - step:
+          runs-on:
+            - self.hosted
+            - linux.shell
+          deployment: test
+          script:
+            - echo "BASE_URL_DEV=$BASE_URL_DEV" > .env
+            - echo "BASE_URL_LIVE=$BASE_URL_LIVE" >> .env
+            - echo "IS_RELEASE=$IS_RELEASE" >> .env
+            - echo "LOG_REQUEST=$LOG_REQUEST" >> .env
+            - sudo docker build -t erp_frontend:$BITBUCKET_BUILD_NUMBER .  
+            - sudo trivy image erp_frontend:$BITBUCKET_BUILD_NUMBER         
+            - rm -f .env
+            - sed -i "s/#tag#/$BITBUCKET_BUILD_NUMBER/g" deploy.yaml
+            - sudo docker stack deploy -c deploy.yaml --detach=false --with-registry-auth frontend
+            - echo -y | sudo docker system prune -a
+  
+        

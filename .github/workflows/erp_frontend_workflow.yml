@@ -1,0 +1,57 @@
+name: Release Pipeline
+on:
+  workflow_run:
+    workflows: [ "fast-forward" ] # Name of the first workflow
+    types:
+      - completed # Trigger when the first workflow completes
+
+jobs:
+  build-deploy:
+    if: ${{ github.event.workflow_run.conclusion == 'success' }} # Run only if the first workflow succeeded
+    runs-on: self-hosted
+
+    steps:
+      # Check out the repository
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # Set environment variables and prepare .env file
+      - name: Set environment variables and prepare .env file
+        run: |
+          echo "BASE_URL_DEV='${{ secrets.BASE_URL_DEV }}'" > .env
+          echo "BASE_URL_LIVE='${{ secrets.BASE_URL_LIVE }}'" >> .env
+          echo "IS_RELEASE='${{ secrets.IS_RELEASE }}'" >> .env
+          echo "LOG_REQUEST='${{ secrets.LOG_REQUEST }}'" >> .env
+          echo "TEST_EMAIL='${{ secrets.TEST_EMAIL }}'" >> .env
+          echo "TEST_PASSWORD='${{ secrets.TEST_PASSWORD }}'" >> .env
+        env:
+          BASE_URL_DEV: ${{ secrets.BASE_URL_DEV }}
+          BASE_URL_LIVE: ${{ secrets.BASE_URL_LIVE }}
+          IS_RELEASE: ${{ secrets.IS_RELEASE }}
+          LOG_REQUEST: ${{ secrets.LOG_REQUEST }}
+          TEST_EMAIL: ${{ secrets.TEST_EMAIL }}
+          TEST_PASSWORD: ${{ secrets.TEST_PASSWORD }}
+
+      # Build the Docker image
+      - name: Build Docker image
+        run: sudo docker build -t erp_frontend:$GITHUB_RUN_NUMBER .
+
+      # Scan the Docker image with Trivy
+      - name: Security scan with Trivy
+        run: sudo trivy image erp_frontend:$GITHUB_RUN_NUMBER
+
+      # Clean up the .env file
+      - name: Clean up .env file
+        run: rm -f .env
+
+      # Update deployment YAML with the build number
+      - name: Update deploy.yaml
+        run: sed -i "s/#tag#/$GITHUB_RUN_NUMBER/g" deploy.yaml
+
+      # Deploy the stack using Docker
+      - name: Deploy with Docker
+        run: sudo docker stack deploy -c deploy.yaml --detach=false --with-registry-auth frontend
+
+      # Clean up Docker system
+      - name: Docker system prune
+        run: echo -y | sudo docker system prune -a

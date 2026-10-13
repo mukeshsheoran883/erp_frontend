@@ -1,0 +1,14 @@
+version: "3.9"
+services:
+  biller_client:
+    image: erp_frontend:#tag#
+    deploy:
+      replicas: 1
+    networks:
+      - es-net
+    ports:
+      - "8600:80"
+
+networks:
+  es-net:
+    external: true
